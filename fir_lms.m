@@ -19,7 +19,7 @@ function [msd,mse,emse,w_n] = fir_lms(u,d,yo,wo,M,N,mu,normalize)
     
     % Define if it will run LMS or NMLS
     if normalize
-       normalize_function =  @(u_reg) (1e-6 + norm(u_reg)^2);    
+       normalize_function =  @(u_reg) (1e-3 + norm(u_reg)^2);    
     else
        normalize_function =  @(u_reg) (1);    
     end

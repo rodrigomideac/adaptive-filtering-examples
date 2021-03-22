@@ -1,9 +1,10 @@
+close all
 %% Simulation properties
 % The simulation will take the expected value of MSE, MSD, and EMSE
 % by performing many realizations.
-N = 10000;                                  % Total samples
+N = 600;                                  % Total samples
 M = 10;                                     % Filter length
-R = 100;                                    % Realizations Qty
+R = 300;                                    % Realizations Qty
 
 %% Optimum filter definition
 % A FIR filter needs to be used as optimum plant.
@@ -11,10 +12,13 @@ R = 100;                                    % Realizations Qty
 % [1] just means the optimum filter doesn't have poles.
 A = [1];                                    
 B = randn(M,1);                             % Create a random FIR filter
-sig2v = 1e-3;                               % Noise level
+M = 4
+B = [1 0.5 -1 2]
+sig2v = 1e-2;                               % Noise level
 
 %% Other definitons
-mu = 0.05;                                  % Adaptive filter step size
+mu = 0.01;                                  % Adaptive filter step size
+mu_nlms = 0.2 %2 * mu*M / (2+ mu*M)
 
 %% Global Accumulators
 % These accumulators are responsible for storing desired metrics between
@@ -34,11 +38,14 @@ emse_nlms = zeros(N,1);
 msd_nlms = zeros(N,1);
 
 %% Run realizations
+alpha_ = 0.0;
+beta_ = 1- alpha_;
 
-for r=1:R
+parfor r=1:R
     %% Signal definitions
     % Define input signal
-    u = randn(N,1);
+    u = randn(N,1);    
+    u = get_u_autoregressive_process_given_alpha_beta(N,1,alpha_,beta_)';
     
     % Define noise signal as white, with variance sig2v
     v = sqrt(sig2v)*randn(N,1);
@@ -60,6 +67,8 @@ for r=1:R
         u_reg =[u(n) u_reg(1:M-1)];
         ru = ru + 1/N .* (u_reg' * u_reg);
     end
+    
+    mu_nlms = 2 * mu * trace(ru) / (2+ mu * trace(ru));
 
     %% Run the LMS Filter
     [r_msd,r_mse,r_emse,w] = fir_lms(u,d,yo,B,M,N,mu,false);
@@ -68,7 +77,7 @@ for r=1:R
     msd_lms = msd_lms + (1/R) .* r_msd;
     
     %% Run the NLMS Filter
-    [r_msd,r_mse,r_emse,w] = fir_lms(u,d,yo,B,M,N,mu,true);
+    [r_msd,r_mse,r_emse,w] = fir_lms(u,d,yo,B,M,N,mu_nlms,true);
     mse_nlms = mse_nlms + (1/R) .* r_mse;
     emse_nlms = emse_nlms + (1/R) .* r_emse;
     msd_nlms = msd_nlms + (1/R) .* r_msd;
@@ -124,3 +133,32 @@ legend('show')
 lms_theoretical_msd = 10*log10(mu*sig2v*M/2);
 line([0,N],[lms_theoretical_msd ,lms_theoretical_msd ],'Color','r','DisplayName','Theoretical MSD');
 saveas(fig,'./img/msd.png')
+
+%%
+% This function calculates a matrix U with being composed as white noise
+% where can be used as input u at an adaptive filter.
+% Number of lines of U and d are determined by k
+
+% Arguments:
+%   N: How many samples will U and d hold (scalar)
+%   k: number of nodes (scalar)
+%   M: coeffient vector size (scalar)
+%   w_o: M x 1 optimum coefficients vector
+
+% Returns:
+%   U: k x N input signal matrix
+%   d: k x N desired signal
+
+%%
+function [U] = get_u_autoregressive_process_given_alpha_beta(N,k,alpha,beta)
+    assertDimensions(alpha,ones(k,1));
+    z = randn(k,N);
+    U = zeros(k,N);
+    
+    for node=1:k
+        for i=2:N
+            U(node,i) = alpha(node)*U(node,i-1) + beta(node)*z(node,i);
+        end
+    end
+  
+end
